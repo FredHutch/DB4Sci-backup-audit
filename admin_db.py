@@ -1,26 +1,31 @@
 #!/usr/bin/env python
 import os
+import sys
 import json
 import datetime
 import pgpasslib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import desc
 import mydb_config
 from human_uptime import human_uptime
-
 
 host = mydb_config.container_host
 port = mydb_config.mydb_admin_port
 dbname = mydb_config.admindb_name
 admin_user = mydb_config.admin_user
+
 password = pgpasslib.getpass(host, port, dbname, admin_user)
+if not password:
+    print('Backup Audit: Did not file a password in the .pgpass file') 
+    sys.exit(1)
 
 SQLALCHEMY_DATABASE_URI = "postgresql://" + admin_user + ":"
 SQLALCHEMY_DATABASE_URI += password + "@"
 SQLALCHEMY_DATABASE_URI += host + ":" + port + "/"
-SQLALCHEMY_DATABASE_URI += dbname 
+SQLALCHEMY_DATABASE_URI += dbname
 
 engine = create_engine(SQLALCHEMY_DATABASE_URI, convert_unicode=True)
 db_session = scoped_session(sessionmaker(autocommit=False,
@@ -34,7 +39,11 @@ from models import *
 
 def init_db():
     import models
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except OperationalError as e:
+        print(e)
+        sys.exit(1) 
 
 
 """ActionLog CRUD
@@ -113,7 +122,7 @@ def add_container_state(c_id, Info, who=None):
 
 
 def list_container_names():
-    """Return python list of all containers in container table 
+    """Return python list of all containers in container table
     list of tuples
     """
     containers = []
@@ -164,7 +173,7 @@ def delete_container_state(c_id):
 
 
 def list_containers():
-    """Return python list of all containers in container table 
+    """Return python list of all containers in container table
     list of tuples
     """
     containers = []
@@ -230,7 +239,7 @@ def add_container(inspect, params):
         Info['Name'] = inspect['Name'][1:]
         Info['State'] = inspect['State']['Status']
         Info['Port'] = params['port']
-        Info['DBVOL'] = params['db_vol'] + '/' + params['dbname'] 
+        Info['DBVOL'] = params['db_vol'] + '/' + params['dbname']
         Info['Ports'] = ', '.join(str(value[1]) for key, value in
                                   params['port_bindings'].items())
         Info['Image'] = params['image']
@@ -298,7 +307,7 @@ def get_container_type(con_name, c_id=None):
         dbengine = data['Info']['dbengine']
     else:
         c_id = None
-        dbengine = '' 
+        dbengine = ''
     return (c_id, dbengine)
 
 
@@ -312,7 +321,8 @@ def update_container_info(c_id, info_data, who=None):
         who = 'DBaaS'
     result = Containers.query.filter(Containers.id == c_id).one()
     result.data['Info'].update(info_data)
-    a = Containers.query.filter(Containers.id == c_id).update({'data': result.data})
+    newVal = {'data': result.data}
+    a = Containers.query.filter(Containers.id == c_id).update(newVal)
     db_session.commit()
     add_container_log(c_id, result.data['Name'][1:],
                       action='update info cid=' + str(c_id),
@@ -332,7 +342,7 @@ def display_container_info(con_name, c_id=None):
 def display_containers():
     """Return summary from containers table
     Containers table has every container ever created, Container Names can be
-    repeated. 
+    repeated.
     """
     result = Containers.query.all()
     dis_format = "%3s %-22s %-15s %-22s %-30s %-8s %-6s %-30s %s\n"
@@ -421,14 +431,14 @@ def backup_log(c_id, name, state, backup_id, backup_type,
     db_session.commit()
     db_session.refresh(u)
 
+
 def backup_lastlog(c_id, tail=None):
     """ Query backup log for the last two log messages for a container """
     limit = 2 if not tail else tail
-    result = Backups.query.filter(Backups.c_id == c_id).order_by(desc(Backups.ts)).limit(limit)
-    #if len(result) != 2:
-    #    print('Error: no records for: %d' % c_id)
-    #    return None
-    return result 
+    result = Backups.query.filter(Backups.c_id == c_id)\
+                          .order_by(desc(Backups.ts))\
+                          .limit(limit)
+    return result
 
 if __name__ == '__main__':
     init_db()
