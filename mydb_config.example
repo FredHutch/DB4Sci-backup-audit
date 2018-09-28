@@ -1,0 +1,17 @@
+#
+# import mydb_config
+#
+
+# DNS information about DB4Sci host
+container_host = 'mydb'
+FQDN_host = 'mydb.YourDomain.Net'
+container_ip = '192.168.0.1'
+mydb_admin_port = '32009'
+
+# where to write your Prometheus output
+prometheus_file = '/opt/node_exporter/metrics_dump/backup_audit.prom'
+
+# MyDB admin container/database name
+# Pass Words are kept in .pgpass
+admindb_name = 'mydb_admin'
+admin_user = 'mydbadmin'
