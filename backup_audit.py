@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+import calendar
 import datetime
 import admin_db
 import mydb_config
@@ -34,9 +35,10 @@ def output_prometheus(prom, check_list):
 
         Write output in two seccions. One for success and one for failures
     """
-    report_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    #report_date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    report_date = int(time.time())
     prom.write('# TYPE mydb_backup_report_date gauge\n')
-    prom.write('mydb_backup_reportdate{name="reportdate"} %s\n' % report_date)
+    prom.write('mydb_backup_report_date{name="reportdate"} %d\n' % report_date)
     prom.write('\n')
 
     prom.write('# TYPE mydb_backup_failure gauge\n')
@@ -56,8 +58,9 @@ def output_prometheus(prom, check_list):
     prom.write('# TYPE mydb_backup_start gauge\n')
     for state in check_list:
         if state['Status'] == 'success':
-            prom.write('mydb_backup_start{name="%s"} %s\n' % (
-                        state['Name'], state['Start']))
+            epoch = calendar.timegm(state['Start'].timetuple())
+            prom.write('mydb_backup_start{name="%s"} %d\n' % (
+                        state['Name'], epoch))
 
 
 def check_backup_logs(c_id):
@@ -72,7 +75,6 @@ def check_backup_logs(c_id):
     result = admin_db.backup_lastlog(c_id)
     duration = 0
     status = 'failure'
-    start = ''
     start_ts = 0
     start_id = end_id = None
     out_of_policy = False
@@ -96,7 +98,6 @@ def check_backup_logs(c_id):
             if out_of_policy:
                 msg = 'Out of Policy. Last backup: %s' % start_ts
             else:
-                start = "%s" % start_ts
                 status = 'success'
         else:
             msg = 'Backup Running: Started %s' % start_ts
@@ -105,7 +106,7 @@ def check_backup_logs(c_id):
             msg = 'Out of Policy. Started: %s' % start_ts
         else:
             msg = 'Error: Last: %s' % start_ts
-    return (status, start, duration, msg)
+    return (status, start_ts, duration, msg)
 
 
 def backup_audit(outfp):
@@ -130,6 +131,7 @@ def backup_audit(outfp):
             if policy == 'Weekly' and day_of_week != day_for_weekly:
                 continue
             (status, start, duration, msg) = check_backup_logs(c_id)
+            print("%s" % start)
             audit = dict({'Name': con_name, 'Status': status,
                           'Start': start, 'Duration': duration,
                           'Policy': policy, 'Message': msg})
